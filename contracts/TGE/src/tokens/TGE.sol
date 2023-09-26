@@ -9,6 +9,7 @@
 //
 
 pragma solidity 0.8.18;
+import "hardhat/console.sol";
 
 import { OwnableUpgradeable } from "../../lib/openzeppelin-contracts-upgradeable/contracts/access/OwnableUpgradeable.sol";
 import { IERC20Upgradeable } from "../../lib/openzeppelin-contracts-upgradeable/contracts/token/ERC20/IERC20Upgradeable.sol";
@@ -27,8 +28,8 @@ contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
 
   event LogTokenDeposit(address indexed purchaser, address indexed beneficiary, uint256 value);
   event LogWithdrawEth(uint256 amount);
-  event LogAllocateHMX(uint256 amount);
-  event LogClaimHMX(address claimer, uint256 hmxAmount, uint256 refundAmount);
+  event LogAllocateFXDX(uint256 amount);
+  event LogClaimFXDX(address claimer, uint256 fxdxAmount, uint256 refundAmount);
   event LogSetUniswapV3Pool(address indexed pool, uint24 fee);
 
   error TGE_InvalidSaleStart();
@@ -46,17 +47,17 @@ contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
   error TGE_PoolHasNotSet();
   error TGE_LiquidityBelowSlippage();
 
-  address public uniswapHmxEthPool;
-  address public hmx;
+  address public uniswapFXDXEthPool; // can remove this
+  address public fxdx;
   uint128 public ethDeposited; // Keeps track of ETH deposited
   uint24 public poolFee;
-  uint128 public hmxTokensAllocated; // HMX Tokens allocated to this contract
+  uint128 public fxdxTokensAllocated; // FXDX Tokens allocated to this contract
   uint64 public saleStart; // Time when the token sale starts
   uint64 public saleClose; // Time when the token sale ends
   uint192 public ethHardCap; // Hard Cap for ETH to be collected from this TGE
   address public weth;
   mapping(address => uint256) public deposits; // Amount each user deposited
-  mapping(address => bool) public isClaimed; // Keep track if user has already claimed HMX
+  mapping(address => bool) public isClaimed; // Keep track if user has already claimed FXDX
   bool public ethWithdrawn; // Flag that says if the owner of this contract has withdrawn the ETH raised by this TGE event
   address public nonfungiblePositionManager;
   address public uniswapV3Pool;
@@ -69,7 +70,7 @@ contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
   /// @param _saleStart time when the token sale starts
   /// @param _saleClose time when the token sale closes
   function initialize(
-    address _hmx,
+    address _fxdx,
     uint64 _saleStart,
     uint64 _saleClose,
     uint192 _ethHardCap,
@@ -82,7 +83,7 @@ contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
     if (_saleStart <= block.timestamp) revert TGE_InvalidSaleStart();
     if (_saleClose <= _saleStart) revert TGE_InvalidSaleClose();
 
-    hmx = _hmx;
+    fxdx = _fxdx;
     saleStart = _saleStart;
     saleClose = _saleClose;
     ethHardCap = _ethHardCap;
@@ -127,7 +128,9 @@ contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
     emit LogWithdrawEth(ethToWithdraw);
   }
 
-  function claimHMX(ClaimParams calldata _params) external nonReentrant {
+  function claimFXDX(
+    // ClaimParams calldata _params
+    ) external nonReentrant {
     if (block.timestamp <= saleClose) revert TGE_SaleHasNotEnded();
     if (isClaimed[msg.sender]) revert TGE_AlreadyClaimed();
     if (uniswapV3Pool == address(0)) revert TGE_PoolHasNotSet();
@@ -135,20 +138,22 @@ contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
     uint256 _refundAmount = refundAmount(msg.sender);
     isClaimed[msg.sender] = true;
 
-    if (_claimableAmount > 0) IERC20Upgradeable(hmx).safeTransfer(msg.sender, _claimableAmount);
+    if (_claimableAmount > 0) IERC20Upgradeable(fxdx).safeTransfer(msg.sender, _claimableAmount);
     if (_refundAmount > 0) {
-      if (_params.isPlaceBuyWall) {
-        IWNative(weth).deposit{ value: _refundAmount }();
-        _mintPositionInUniV3Pool(msg.sender, _refundAmount, _params.minLiquidity);
-      } else _transferOutEth(msg.sender, _refundAmount);
+      // if (_params.isPlaceBuyWall) {
+      //   IWNative(weth).deposit{ value: _refundAmount }();
+      //   _mintPositionInUniV3Pool(msg.sender, _refundAmount, _params.minLiquidity);
+      // } else 
+
+      _transferOutEth(msg.sender, _refundAmount);
     }
-    emit LogClaimHMX(msg.sender, _claimableAmount, _refundAmount);
+    emit LogClaimFXDX(msg.sender, _claimableAmount, _refundAmount);
   }
 
   function claimableAmount(address beneficiary) public view returns (uint256) {
     return
       !isClaimed[beneficiary] && ethDeposited > 0
-        ? (hmxTokensAllocated * deposits[beneficiary]) / ethDeposited
+        ? (fxdxTokensAllocated * deposits[beneficiary]) / ethDeposited
         : 0;
   }
 
@@ -158,14 +163,14 @@ contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
     return deposits[beneficiary] - (ethHardCap * deposits[beneficiary]) / ethDeposited;
   }
 
-  function getCurrentHMXPrice() external view returns (uint256) {
+  function getCurrentFXDXPrice() external view returns (uint256) {
     if (block.timestamp <= saleStart) {
       return 0;
     }
     return
       ethDeposited >= ethHardCap
-        ? (ethHardCap * 1e18) / hmxTokensAllocated
-        : (ethDeposited * 1e18) / hmxTokensAllocated;
+        ? (ethHardCap * 1e18) / fxdxTokensAllocated
+        : (ethDeposited * 1e18) / fxdxTokensAllocated;
   }
 
   function setUniswapV3Pool(address _pool, uint24 _fee) external onlyOwner {
@@ -174,11 +179,11 @@ contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
     emit LogSetUniswapV3Pool(_pool, _fee);
   }
 
-  function allocateHMX(uint256 _hmxAllocation) external onlyOwner {
+  function allocateFXDX(uint256 _fxdxAllocation) external onlyOwner {
     if (block.timestamp > saleStart) revert TGE_SaleHasStarted();
-    IERC20Upgradeable(hmx).safeTransferFrom(msg.sender, address(this), _hmxAllocation);
-    hmxTokensAllocated = IERC20Upgradeable(hmx).balanceOf(address(this)).toUint128();
-    emit LogAllocateHMX(_hmxAllocation);
+    IERC20Upgradeable(fxdx).safeTransferFrom(msg.sender, address(this), _fxdxAllocation);
+    fxdxTokensAllocated = IERC20Upgradeable(fxdx).balanceOf(address(this)).toUint128();
+    emit LogAllocateFXDX(_fxdxAllocation);
   }
 
   function _transferOutEth(address to, uint256 amount) internal {
@@ -213,10 +218,10 @@ contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
     );
 
     INonfungiblePositionManager.MintParams memory params;
-    if (_pool.token1() == hmx) {
+    if (_pool.token1() == fxdx) {
       params = INonfungiblePositionManager.MintParams({
         token0: weth,
-        token1: hmx,
+        token1: fxdx,
         fee: poolFee,
         tickLower: tickBound + tickSpace,
         tickUpper: tickBound + (2 * tickSpace),
@@ -229,7 +234,7 @@ contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
       });
     } else {
       params = INonfungiblePositionManager.MintParams({
-        token0: hmx,
+        token0: fxdx,
         token1: weth,
         fee: poolFee,
         tickLower: tickBound - (2 * tickSpace),
