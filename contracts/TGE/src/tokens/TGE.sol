@@ -9,6 +9,7 @@
 //
 
 pragma solidity 0.8.18;
+
 import "hardhat/console.sol";
 import "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
 import "@uniswap/lib/contracts/libraries/TransferHelper.sol";
@@ -19,9 +20,6 @@ import {MathUpgradeable} from "../../lib/openzeppelin-contracts-upgradeable/cont
 import {ReentrancyGuardUpgradeable} from "../../lib/openzeppelin-contracts-upgradeable/contracts/security/ReentrancyGuardUpgradeable.sol";
 import {SafeCastUpgradeable} from "../../lib/openzeppelin-contracts-upgradeable/contracts/utils/math/SafeCastUpgradeable.sol";
 import {IWNative} from "../interfaces/IWNative.sol";
-
-// import {INonfungiblePositionManager} from "../staking/interfaces/INonfungiblePositionManager.sol";
-// import {IUniswapV3Pool} from "../staking/interfaces/IUniswapV3Pool.sol";
 
 contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
     using MathUpgradeable for uint256;
@@ -154,7 +152,11 @@ contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
     }
 
     function _deposit(address beneficiary, uint256 _amount) internal {
-        IERC20Upgradeable(usdbc).transferFrom(beneficiary, _amount);
+        IERC20Upgradeable(usdbc).transferFrom(
+            beneficiary,
+            address(this),
+            _amount
+        );
 
         deposits[beneficiary] = deposits[beneficiary] + msg.value;
         usdbcDeposited = usdbcDeposited + _amount.toUint128();
@@ -162,21 +164,12 @@ contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
 
     /// @dev Withdraws eth deposited into the contract. Only owner can call this.
     function withdraw(address to) external onlyOwner {
-        // if (block.timestamp <= saleClose) revert TGE_SaleHasNotEnded();
-        // if (ethWithdrawn) revert TGE_AlreadyWithdraw();
-        // uint256 ethToWithdraw = ethDeposited >= ethHardCap
-        //     ? ethHardCap
-        //     : ethDeposited;
-        // ethWithdrawn = true;
-        // _transferOutWrappedEth(to, ethToWithdraw);
-        // emit LogWithdrawEth(ethToWithdraw);
-
         if (block.timestamp <= saleClose) revert TGE_SaleHasNotEnded();
         if (usdbcWithdrawn) revert TGE_AlreadyWithdraw();
         uint256 usdbctoWithdrawn = usdbcDeposited >= usdbcHardCap
             ? usdbcHardCap
             : usdbcDeposited;
-        usdbctoWithdrawn = true;
+        usdbcWithdrawn = true;
         _transferOutUsdbc(to, usdbctoWithdrawn);
 
         emit LogWithdrawEth(usdbctoWithdrawn);
@@ -237,9 +230,9 @@ contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         IERC20Upgradeable(usdbc).safeTransfer(to, amount);
     }
 
-    function _transferOutWrappedEth(address to, uint256 amount) internal {
-        IWNative(weth).deposit{value: amount}();
-        IERC20Upgradeable(weth).safeTransfer(to, amount);
+    function _transferOutFXDX() internal {
+        uint fxdxBalance = IERC20Upgradeable(weth).balanceOf(address(this));
+        IERC20Upgradeable(fxdx).safeTransfer(msg.sender, fxdxBalance);
     }
 
     /// @custom:oz-upgrades-unsafe-allow constructor
