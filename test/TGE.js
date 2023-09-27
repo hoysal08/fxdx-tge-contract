@@ -4,6 +4,7 @@ const { describe } = require("mocha");
 require("@nomicfoundation/hardhat-chai-matchers");
 const { expect } = require("chai");
 const { time } = require("@nomicfoundation/hardhat-network-helpers");
+const { toBigInt } = require("ethers");
 
 
 
@@ -129,26 +130,26 @@ describe("TGE Contract", () => {
             expect(await tge.isClaimed(account1.address)).to.be.true;
             expect(await fxdx.balanceOf(account1.address)).to.be.equal(claimAmount);
         })
-        // it("users shouldn't be able to claim twice", async () => {
-        //     const { owner, account1, account2, weth, fxdx, tge, START_TIMESTAMP, END_TIMESTAMP, ETH_HARDCAP_IN_WEI } = await loadFixture(deployFixture);
+        it("users shouldn't be able to claim twice", async () => {
+            const { owner, account1, account2, weth, fxdx, tge, START_TIMESTAMP, END_TIMESTAMP, ETH_HARDCAP_IN_WEI } = await loadFixture(deployFixture);
 
-        //     await tge.connect(account1).deposit(account1.address, { value: ETH_IN_WEI })
-        //     let params = {
-        //         isPlaceBuyWall: false,
-        //         minLiquidity: 0
-        //     }
-        //     await tge.setUniswapV3Pool(sample_address, 0)
-        //     await moveToEndOfSale(END_TIMESTAMP);
+            await tge.connect(account1).deposit(account1.address, { value: ETH_IN_WEI })
+            let params = {
+                isPlaceBuyWall: false,
+                minLiquidity: 0
+            }
+            await tge.setUniswapV3Pool(sample_address, 0)
+            await moveToEndOfSale(END_TIMESTAMP);
 
-        //     const claimAmount = await tge.claimableAmount(account1.address)
-        //     await tge.connect(account1).claimFXDX(params);
-        //     const balanceAfter1stClaim = fxdx.balanceOf(account1);
-        //     expect(balanceAfter1stClaim).to.be.equal(claimAmount);
+            const claimAmount = await tge.claimableAmount(account1.address)
+            await tge.connect(account1).claimFXDX(params);
+            const balanceAfter1stClaim = await fxdx.balanceOf(account1);
+            expect(balanceAfter1stClaim).to.be.equal(claimAmount);
 
-        //     await expect(tge.connect(account1).claimFXDX(params)).to.be.revertedWithCustomError(tge, 'TGE_AlreadyClaimed()');
-        //     const balanceAfter2stClaim = await fxdx.balanceOf(account1);
-        //     expect(balanceAfter1stClaim).to.be.equal(balanceAfter2stClaim);
-        // })
+            await expect(tge.connect(account1).claimFXDX(params)).to.be.revertedWithCustomError(tge, 'TGE_AlreadyClaimed()');
+            const balanceAfter2stClaim = await fxdx.balanceOf(account1);
+            expect(balanceAfter1stClaim).to.be.equal(balanceAfter2stClaim);
+        })
         it("users should be refunded if we hit hardcap", async () => {
             const { owner, account1, account2, weth, fxdx, tge, START_TIMESTAMP, END_TIMESTAMP, ETH_HARDCAP_IN_WEI } = await loadFixture(deployFixture);
 
@@ -162,27 +163,16 @@ describe("TGE Contract", () => {
             await moveToEndOfSale(END_TIMESTAMP);
 
             const refundAmount = await tge.refundAmount(account1.address);
-            console.log(typeof(refundAmount))
-            refundAmount=refundAmount.toFixed(4);
+
             const balanceBeforeRefund = await ethers.provider.getBalance(account1.address);
-            balanceBeforeRefund=balanceBeforeRefund.toFixed(4);
-            console.log("bal before anything",balanceBeforeRefund)
+
             let txn = await tge.connect(account1).claimFXDX(params);
-            txn = await txn.wait()
+            txn = await txn.wait();
             const gasUsed = txn.gasUsed;
-            console.log("gas spent",ethers.formatEther(gasUsed.toFixed(4)))
             const balanceAfterRefund = await ethers.provider.getBalance(account1.address);
-            console.log("after balance",ethers.formatEther(balanceAfterRefund))
-            console.log("refund amount",ethers.formatEther(refundAmount))
-            
 
-            // console.log(balanceBeforeRefund)
-            // console.log(balanceAfterRefund)
-            // console.log(refundAmount)
-
-            // console.log(await ethers.provider.getBalance(account1.address))
-            console.log(ethers.formatEther(balanceAfterRefund - ((BigInt(balanceBeforeRefund)) + BigInt(refundAmount) - BigInt(gasUsed))))
-            expect(balanceAfterRefund).to.be.equal((BigInt(balanceBeforeRefund)) + BigInt(refundAmount) - BigInt(gasUsed));
+            const tempBal = (parseFloat(ethers.formatEther(balanceBeforeRefund)) + parseFloat(ethers.formatEther(refundAmount))) - parseFloat(ethers.formatEther(gasUsed));
+            expect(tempBal.toFixed(2)).to.be.equal((parseFloat(ethers.formatEther(balanceAfterRefund)).toFixed(2)))
         })
     })
 })
