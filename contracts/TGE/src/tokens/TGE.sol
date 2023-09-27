@@ -68,11 +68,12 @@ contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
     address public v3Router;
     mapping(address => uint256) public deposits; // Amount each user deposited
     mapping(address => bool) public isClaimed; // Keep track if user has already claimed FXDX
-    bool public ethWithdrawn; // Flag that says if the owner of this contract has withdrawn the ETH raised by this TGE event
+    bool public usdbcWithdrawn; // Flag that says if the owner of this contract has withdrawn the ETH raised by this TGE event
 
     uint constant price = 1200;
     uint constant pricePrecision = 10000;
     uint24 public poolFee;
+    uint8 public dollorInCents = 100;
 
     /// @param _saleStart time when the token sale starts
     /// @param _saleClose time when the token sale closes
@@ -98,7 +99,7 @@ contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         usdbc = _usdbc;
         weth = _weth;
         v3Router = _v3Router;
-        ethWithdrawn = false;
+        usdbcWithdrawn = false;
     }
 
     /// Deposit fallback
@@ -161,15 +162,24 @@ contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
 
     /// @dev Withdraws eth deposited into the contract. Only owner can call this.
     function withdraw(address to) external onlyOwner {
-        if (block.timestamp <= saleClose) revert TGE_SaleHasNotEnded();
-        if (ethWithdrawn) revert TGE_AlreadyWithdraw();
-        uint256 ethToWithdraw = ethDeposited >= ethHardCap
-            ? ethHardCap
-            : ethDeposited;
-        ethWithdrawn = true;
-        _transferOutWrappedEth(to, ethToWithdraw);
+        // if (block.timestamp <= saleClose) revert TGE_SaleHasNotEnded();
+        // if (ethWithdrawn) revert TGE_AlreadyWithdraw();
+        // uint256 ethToWithdraw = ethDeposited >= ethHardCap
+        //     ? ethHardCap
+        //     : ethDeposited;
+        // ethWithdrawn = true;
+        // _transferOutWrappedEth(to, ethToWithdraw);
+        // emit LogWithdrawEth(ethToWithdraw);
 
-        emit LogWithdrawEth(ethToWithdraw);
+        if (block.timestamp <= saleClose) revert TGE_SaleHasNotEnded();
+        if (usdbcWithdrawn) revert TGE_AlreadyWithdraw();
+        uint256 usdbctoWithdrawn = usdbcDeposited >= usdbcHardCap
+            ? usdbcHardCap
+            : usdbcDeposited;
+        usdbctoWithdrawn = true;
+        _transferOutUsdbc(to, usdbctoWithdrawn);
+
+        emit LogWithdrawEth(usdbctoWithdrawn);
     }
 
     function claimFXDX()
@@ -186,7 +196,7 @@ contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         if (_claimableAmount > 0)
             IERC20Upgradeable(fxdx).safeTransfer(msg.sender, _claimableAmount);
         if (_refundAmount > 0) {
-            _transferOutEth(msg.sender, _refundAmount);
+            _transferOutUsdbc(msg.sender, _refundAmount);
         }
         emit LogClaimFXDX(msg.sender, _claimableAmount, _refundAmount);
     }
@@ -195,28 +205,19 @@ contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         address beneficiary
     ) public view returns (uint256) {
         return
-            !isClaimed[beneficiary] && ethDeposited > 0
-                ? (fxdxTokensAllocated * deposits[beneficiary]) / ethDeposited
+            !isClaimed[beneficiary] && usdbcDeposited > 0
+                ? (deposits[beneficiary] * (dollorInCents / price)) /
+                    pricePrecision
                 : 0;
     }
 
     function refundAmount(address beneficiary) public view returns (uint256) {
         if (isClaimed[beneficiary]) return 0;
-        if (ethDeposited <= ethHardCap) return 0;
+        if (usdbcDeposited <= usdbcHardCap) return 0;
         return
             deposits[beneficiary] -
-            (ethHardCap * deposits[beneficiary]) /
-            ethDeposited;
-    }
-
-    function getCurrentFXDXPrice() external view returns (uint256) {
-        if (block.timestamp <= saleStart) {
-            return 0;
-        }
-        return
-            ethDeposited >= ethHardCap
-                ? (ethHardCap * 1e18) / fxdxTokensAllocated
-                : (ethDeposited * 1e18) / fxdxTokensAllocated;
+            (usdbcHardCap * deposits[beneficiary]) /
+            usdbcDeposited;
     }
 
     function allocateFXDX(uint256 _fxdxAllocation) external onlyOwner {
@@ -232,11 +233,8 @@ contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         emit LogAllocateFXDX(_fxdxAllocation);
     }
 
-    function _transferOutEth(address to, uint256 amount) internal {
-        (bool success, ) = to.call{value: amount, gas: 2300}("");
-        if (!success) {
-            _transferOutWrappedEth(to, amount);
-        }
+    function _transferOutUsdbc(address to, uint256 amount) internal {
+        IERC20Upgradeable(usdbc).safeTransfer(to, amount);
     }
 
     function _transferOutWrappedEth(address to, uint256 amount) internal {
