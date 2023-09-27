@@ -11,3 +11,15 @@ REPORT_GAS=true npx hardhat test
 npx hardhat node
 npx hardhat run scripts/deploy.js
 ```
+
+
+
+to able able use usdc ?
+to be able to have eth also
+All in all raise USDC and hardcap Price;
+Add a withdraw FXDX
+Should we have a low cutoff(min cap for buy)
+
+
+
+Hardcap -> 1000ETH
