@@ -104,6 +104,15 @@ describe("TGE Contract", () => {
     ).to.emit(usdc, "Mint");
   }
 
+  async function claimFXDX(tge, owner, beneficiary, fxdx) {
+    console.log("here");
+    await allocateFXDX(fxdx, owner, tge);
+    await depositUsdbc(beneficiary, 1000, tge);
+    await time.increase(129600);
+    await expect(tge.connect(beneficiary).claimFXDX()).to.emit(tge,"LogClaimFXDX");
+    
+  }
+
   async function depositUsdbc(beneficiary, amount, tge) {
     const usdc = await ethers.getContractAt(
       abi,
@@ -119,7 +128,6 @@ describe("TGE Contract", () => {
     await expect(
       tge.connect(beneficiary).depositUsdbc(beneficiary, amount)
     ).to.emit(tge, "TokenDeposit");
-    await expect(tge.connect(beneficiary).depositUsdbc(beneficiary, amount))
   }
 
   beforeEach(async () => {
@@ -144,5 +152,10 @@ describe("TGE Contract", () => {
   it("Should deposit direct USDC", async () => {
     const { owner, fxdx, tge, account1 } = this.fixture;
     await depositUsdbc(account1, 1000, tge);
+  });
+
+  it("Should Claim FXDX", async () => {
+    const { owner, fxdx, tge, account1 } = this.fixture;
+    await claimFXDX(tge, owner, account1, fxdx);
   });
 });
