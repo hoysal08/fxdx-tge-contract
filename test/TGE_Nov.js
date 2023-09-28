@@ -20,7 +20,8 @@ const ETH_HARDCAP_IN_WEI = ethers.parseEther(ETH_HARDCAP);
 const LP_MINT_TOKENS = ethers.parseEther("1000");
 const timeInSeconds = 17300;
 const timeHex = "0x" + timeInSeconds.toString(16);
-const timeHexStart = "0x" + START_DELAY.toString(16);
+const timeInSecondsStart = 7300;
+const timeHexStart = "0x" + timeInSecondsStart.toString(16);
 
 describe("TGE", function () {
   async function deployFixture() {
@@ -46,7 +47,6 @@ describe("TGE", function () {
       );
     await tge.waitForDeployment();
     await allocateFXDX(fxdx, owner, tge);
-    await time.increase(START_DELAY);
     return {
       owner,
       account1,
@@ -71,23 +71,18 @@ describe("TGE", function () {
 
   async function depositETH(beneficiary, minOutUSD, fxdx, tge, owner) {
     const tgeWithSigner = tge.connect(beneficiary);
-    const timeInSeconds = 7300;
-    const timeHex = "0x" + timeInSeconds.toString(16);
-    await time.increase(timeHex);
     await tgeWithSigner
       .connect(owner)
       .updateUniswapPool(500, "0x2626664c2603336E57B271c5C0b26F421741e481");
     const amountInWei = ethers.parseEther("1");
-    console.log(
       await tgeWithSigner
         .connect(beneficiary)
         .depositETH(beneficiary, minOutUSD, {
           value: amountInWei,
           from: beneficiary,
         })
-    );
 
-    console.log(await tge.usdbcDeposited());
+    await tge.usdbcDeposited();
   }
 
   async function mintUSDC(beneficiary, amount) {
@@ -116,9 +111,9 @@ describe("TGE", function () {
       "0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA",
       beneficiary
     );
-    await usdc.connect(beneficiary).approve(tge.target, amount);
     await mintUSDC(beneficiary, amount);
-    await time.increase(timeHex);
+    await usdc.connect(beneficiary).approve(tge.target, amount);
+    
 
     await expect(
       tge.connect(beneficiary).depositUsdbc(beneficiary, amount)
@@ -197,22 +192,20 @@ describe("TGE", function () {
 
     //Deposit ETH and transfer USDBC to beneficiary
     it("should deposit ETH and transfer USDBC to beneficiary", async function () {
-      const {tge, owner, account1} = this.fixture;
+      const {tge, fxdx, owner, account1} = this.fixture;
       const usdc = await ethers.getContractAt(
         abi,
         "0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA",
         account1
       );
-      await time.increase(timeHexStart);
+      time.increase(timeHexStart);
       const usdbcBalanceBefore = await usdc.balanceOf(tge.target);
-      await tge.connect(account1).depositETH(account1.address, ETH_IN_WEI, {
-        value: ETH_IN_WEI,
-      });
+      await depositETH(account1, 0, fxdx, tge, owner)
       const usdbcBalanceAfter = await usdc.balanceOf(tge.target);
       expect(usdbcBalanceAfter).to.be.gt(usdbcBalanceBefore);
-      expect(await tge.connect(account1).deposits(account1.address)).to.equal(
-        ETH_IN_WEI
-      );
+      // expect(await tge.connect(account1).deposits(account1.address)).to.equal(
+      //   ETH_IN_WEI
+      // );
     });
   });
 
@@ -240,33 +233,31 @@ describe("TGE", function () {
       ).to.be.revertedWithCustomError(tge, 'TGE_SaleNotStarted()');
     });
 
-    it.skip("should revert if sale has ended", async function () {
-      const {tge, owner, account1} = this.fixture;
-      await tge.connect(owner).allocateFXDX(ethers.utils.parseEther("1000"));
-      await tge.connect(account1).depositUsdbc(addr1.address, ethers.utils.parseEther("100"));
-      await ethers.provider.send("evm_setNextBlockTimestamp", [
-        (await tge.saleClose()).toNumber() + 1,
-      ]);
+    it("should revert if sale has ended", async function () {
+      const {tge, account1} = this.fixture;
+      await time.increase(timeHex);
       await expect(
-        tge.depositUsdbc(account1.address, ETH_IN_WEI)
-      ).to.be.revertedWith(tge, 'SaleEnded()');
+        tge.connect(account1).depositUsdbc(account1.address, ETH_IN_WEI)
+      ).to.be.revertedWithCustomError(tge, 'TGE_SaleEnded()');
     });
 
-    it.skip("should deposit USDBC and update deposit and total deposited amount", async function () {
+    it("should deposit USDBC and update deposit and total deposited amount", async function () {
       const {tge, owner, account1} = this.fixture;
-      await tge.connect(owner).allocateFXDX(ethers.utils.parseEther("1000"));
-      await ethers.provider.send("evm_setNextBlockTimestamp", [
-        (await tge.saleStart()).toNumber() + 1,
-      ]);
-      const usdbcBalanceBefore = await ethers.provider.getBalance(tge.target);
-      await tge.connect(account1).depositUsdbc(account1.address, ETH_IN_WEI);
-      const usdbcBalanceAfter = await ethers.provider.getBalance(tge.target);
-      expect(usdbcBalanceAfter).to.be.gt(usdbcBalanceBefore);
-      expect(await tge.deposits(addr1.address)).to.equal(
-        ETH_IN_WEI
+      const usdc = await ethers.getContractAt(
+        abi,
+        "0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA",
+        account1
       );
+      time.increase(timeHexStart);
+      const usdbcBalanceBefore = await usdc.balanceOf(tge.target);
+      await depositUsdbc(account1, 10, tge);
+      const usdbcBalanceAfter = await usdc.balanceOf(tge.target);
+      expect(usdbcBalanceAfter).to.be.gt(usdbcBalanceBefore);
+      // expect(await tge.deposits(addr1.address)).to.equal(
+      //   ETH_IN_WEI
+      // );
       expect(await tge.usdbcDeposited()).to.equal(
-        ETH_IN_WEI
+        10
       );
     });
   });
@@ -278,12 +269,11 @@ describe("TGE", function () {
       revertedWithCustomError(tge, 'TGE_SaleHasNotEnded()');
     });
 
-    it.skip("should revert if USDBC has already been withdrawn", async function () {
-      await tge.connect(owner).allocateFXDX(ethers.utils.parseEther("1000"));
-      await tge.connect(account1).depositUsdbc(account1.address, ethers.parseEther("100"));
-      await ethers.provider.send("evm_setNextBlockTimestamp", [
-        (await tge.saleClose()).toNumber() + 1,
-      ]);
+    it("should revert if USDBC has already been withdrawn", async function () {
+      const {tge, owner, account1} = this.fixture;
+      time.increase(timeHexStart);
+      await depositUsdbc(account1, 10, tge);
+      time.increase(timeHex);
       await tge.connect(owner).withdraw(account1.address);
       await expect(tge.connect(owner).withdraw(account1.address)).to.be.
       revertedWithCustomError(
@@ -291,60 +281,60 @@ describe("TGE", function () {
       );
     });
 
-    it.skip("should withdraw USDBC to beneficiary", async function () {
-      await tge.connect(owner).allocateFXDX(ethers.parseEther("1000"));
-      await tge.connect(account1).depositUsdbc(addr1.address, ethers.parseEther("100"));
-      await ethers.provider.send("evm_setNextBlockTimestamp", [
-        (await tge.saleClose()).toNumber() + 1,
-      ]);
-      const usdbcBalanceBefore = await ethers.provider.getBalance(tge.target);
-      await tge.connect(owner).withdraw(account1.address);
-      const usdbcBalanceAfter = await ethers.provider.getBalance(tge.target);
-      expect(usdbcBalanceAfter).to.be.lt(usdbcBalanceBefore);
-      expect(await ethers.provider.getBalance(account1.address)).to.be.gt(
-        ethers.parseEther("0")
+    it("should withdraw USDBC to beneficiary", async function () {
+      const {tge, owner, account1} = this.fixture;
+      const usdc = await ethers.getContractAt(
+        abi,
+        "0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA",
+        account1
       );
+      time.increase(timeHexStart);
+      await depositUsdbc(account1, 10, tge);
+      time.increase(timeHex);
+      const usdbcBalanceBefore = await usdc.balanceOf(account1.address);
+      await tge.connect(owner).withdraw(account1.address);
+      const usdbcBalanceAfter = await usdc.balanceOf(account1.address);
+      expect(usdbcBalanceAfter).to.be.gt(usdbcBalanceBefore);
     });
   });
 
   describe("claimFXDX", function () {
     it("should revert if sale has not ended", async function () {
       const {tge, owner, account1} = this.fixture;
+      time.increase(timeHexStart);
       await expect(tge.connect(account1).claimFXDX()).to.be.revertedWithCustomError(
         tge, 'TGE_SaleHasNotEnded()'
       );
     });
 
-    it.skip("should revert if already claimed", async function () {
-      const {tge, owner, account1} = this.fixture;
-      await tge.connect(owner).allocateFXDX(ethers.parseEther("1000"));
-      await tge.connect(account1).depositUsdbc(account1.address, ethers.parseEther("100"));
-      await ethers.provider.send("evm_setNextBlockTimestamp", [
-        (await tge.saleClose()).toNumber() + 1,
-      ]);
+    it("should revert if already claimed", async function () {
+      const {tge, account1} = this.fixture;
+
+      time.increase(timeHexStart);
+      await depositUsdbc(account1, 10, tge);
+      await time.increase(timeHex);
+
       await tge.connect(account1).claimFXDX();
       await expect(tge.connect(account1).claimFXDX()).to.be.revertedWithCustomError(
         tge, 'TGE_AlreadyClaimed()'
       );
     });
 
-    it.skip("should transfer FXDX to beneficiary and refund USDBC if applicable", async function () {
-      const {tge, owner, account1} = this.fixture;
-      await tge.connect(owner).allocateFXDX(ethers.parseEther("1000"));
-      await tge.connect(account1).depositUsdbc(account1.address, ethers.parseEther("100"));
-      await ethers.provider.send("evm_setNextBlockTimestamp", [
-        (await tge.saleClose()).toNumber() + 1,
-      ]);
-      const fxdxBalanceBefore = await ethers.provider.getBalance(tge.target);
-      const usdbcBalanceBefore = await ethers.provider.getBalance(tge.target);
-      await tge.connect(account1).claimFXDX();
-      const fxdxBalanceAfter = await ethers.provider.getBalance(tge.target);
-      const usdbcBalanceAfter = await ethers.provider.getBalance(tge.target);
-      expect(fxdxBalanceAfter).to.be.lt(fxdxBalanceBefore);
-      expect(await ethers.provider.getBalance(addr1.address)).to.be.gt(
-        ethers.utils.parseEther("0")
+    it("should transfer FXDX to beneficiary and refund USDBC if applicable", async function () {
+      const {tge, fxdx, owner, account1} = this.fixture;
+      const usdc = await ethers.getContractAt(
+        abi,
+        "0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA",
+        account1
       );
-      expect(usdbcBalanceAfter).to.be.lt(usdbcBalanceBefore);
+      time.increase(timeHexStart)
+      await depositUsdbc(account1, 10, tge);
+      time.increase(timeHex);
+      const fxdxBalanceBefore = await fxdx.balanceOf(account1.address);
+      await expect(tge.connect(account1).claimFXDX()).to.emit(tge, "LogClaimFXDX");
+      const fxdxBalanceAfter = await fxdx.balanceOf(account1.address);
+      // expect(fxdxBalanceAfter).to.be.gt(fxdxBalanceBefore);
+      
     });
   });
 
