@@ -63,10 +63,10 @@ contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
     mapping(address => bool) public isClaimed; // Keep track if user has already claimed FXDX
     bool public usdbcWithdrawn; // Flag that says if the owner of this contract has withdrawn the ETH raised by this TGE event
 
-    uint constant price = 1200;
-    uint constant pricePrecision = 10000;
-    uint24 public poolFee;
-    uint8 public dollorInCents = 100;
+    uint  price;
+    uint  pricePrecision;
+    uint24  poolFee;
+    uint8 public  dollorInCents;
 
     /// @param _saleStart time when the token sale starts
     /// @param _saleClose time when the token sale closes
@@ -93,6 +93,9 @@ contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         weth = _weth;
         v3Router = _v3Router;
         usdbcWithdrawn = false;
+        price = 1200;
+        pricePrecision = 10000;
+        dollorInCents = 100;
     }
 
     /// Deposit fallback
