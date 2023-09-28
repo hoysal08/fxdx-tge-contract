@@ -13,20 +13,20 @@ pragma solidity 0.8.18;
 import "hardhat/console.sol";
 import "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
 import "@uniswap/lib/contracts/libraries/TransferHelper.sol";
-import {OwnableUpgradeable} from "../../lib/openzeppelin-contracts-upgradeable/contracts/access/OwnableUpgradeable.sol";
-import {IERC20Upgradeable} from "../../lib/openzeppelin-contracts-upgradeable/contracts/token/ERC20/IERC20Upgradeable.sol";
-import {SafeERC20Upgradeable} from "../../lib/openzeppelin-contracts-upgradeable/contracts/token/ERC20/utils/SafeERC20Upgradeable.sol";
-import {MathUpgradeable} from "../../lib/openzeppelin-contracts-upgradeable/contracts/utils/math/MathUpgradeable.sol";
-import {ReentrancyGuardUpgradeable} from "../../lib/openzeppelin-contracts-upgradeable/contracts/security/ReentrancyGuardUpgradeable.sol";
-import {SafeCastUpgradeable} from "../../lib/openzeppelin-contracts-upgradeable/contracts/utils/math/SafeCastUpgradeable.sol";
-import {IWNative} from "../interfaces/IWNative.sol";
+import "../../lib/openzeppelin-contracts-upgradeable/contracts/access/OwnableUpgradeable.sol";
+import "../../lib/openzeppelin-contracts-upgradeable/contracts/token/ERC20/IERC20Upgradeable.sol";
+import "../../lib/openzeppelin-contracts-upgradeable/contracts/token/ERC20/utils/SafeERC20Upgradeable.sol";
+import "../../lib/openzeppelin-contracts-upgradeable/contracts/utils/math/MathUpgradeable.sol";
+import "../../lib/openzeppelin-contracts-upgradeable/contracts/security/ReentrancyGuardUpgradeable.sol";
+import "../../lib/openzeppelin-contracts-upgradeable/contracts/utils/math/SafeCastUpgradeable.sol";
+import "../interfaces/IWNative.sol";
 
 contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
     using MathUpgradeable for uint256;
     using SafeCastUpgradeable for uint256;
     using SafeERC20Upgradeable for IERC20Upgradeable;
 
-    event LogTokenDeposit(
+    event TokenDeposit(
         address indexed purchaser,
         address indexed beneficiary,
         uint256 value
@@ -38,7 +38,6 @@ contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         uint256 fxdxAmount,
         uint256 refundAmount
     );
-    event LogSetUniswapV3Pool(address indexed pool, uint24 fee);
 
     error TGE_InvalidSaleStart();
     error TGE_InvalidSaleClose();
@@ -116,7 +115,7 @@ contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         if (block.timestamp < saleStart) revert TGE_SaleNotStarted();
         if (block.timestamp > saleClose) revert TGE_SaleEnded();
         // get usdbc from eth
-        uint amountOut = swapETHtoUSDBC(msg.value, minOutUSD);
+        uint amountOut = swapETHtoUSDBC(minOutUSD);
         _deposit(beneficiary, amountOut);
     }
 
@@ -131,7 +130,6 @@ contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
     }
 
     function swapETHtoUSDBC(
-        uint256 amountIn,
         uint256 minAmountOut
     ) internal returns (uint256 amountOut) {
         IWNative(weth).deposit{value: msg.value}();
@@ -144,7 +142,7 @@ contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
                 fee: poolFee,
                 recipient: address(this),
                 deadline: block.timestamp,
-                amountIn: amountIn,
+                amountIn: msg.value,
                 amountOutMinimum: minAmountOut,
                 sqrtPriceLimitX96: 0
             });
@@ -158,8 +156,9 @@ contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
             _amount
         );
 
-        deposits[beneficiary] = deposits[beneficiary] + msg.value;
+        deposits[beneficiary] = deposits[beneficiary] + _amount;
         usdbcDeposited = usdbcDeposited + _amount.toUint128();
+        emit TokenDeposit(msg.sender, beneficiary, _amount);
     }
 
     /// @dev Withdraws eth deposited into the contract. Only owner can call this.
@@ -233,6 +232,14 @@ contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
     function _transferOutFXDX() internal {
         uint fxdxBalance = IERC20Upgradeable(weth).balanceOf(address(this));
         IERC20Upgradeable(fxdx).safeTransfer(msg.sender, fxdxBalance);
+    }
+
+    function updateUniswapPool(
+        uint24 _poolFee,
+        address _v3router
+    ) external onlyOwner {
+        poolFee = _poolFee;
+        v3Router = _v3router;
     }
 
     /// @custom:oz-upgrades-unsafe-allow constructor
