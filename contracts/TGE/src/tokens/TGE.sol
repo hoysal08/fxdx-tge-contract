@@ -31,28 +31,24 @@ contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         address indexed beneficiary,
         uint256 value
     );
-    event LogWithdrawEth(uint256 amount);
-    event LogAllocateFXDX(uint256 amount);
-    event LogClaimFXDX(
-        address claimer,
-        uint256 fxdxAmount,
-        uint256 refundAmount
-    );
+    event TokensWithdrawn(uint256 amount);
+    event AllocateFXDX(uint256 amount);
+    event ClaimFXDX(address claimer, uint256 fxdxAmount, uint256 refundAmount);
 
-    error TGE_InvalidSaleStart();
-    error TGE_InvalidSaleClose();
-    error TGE_SaleNotStarted();
-    error TGE_SaleHasStarted();
-    error TGE_SaleEnded();
-    error TGE_MaxDepositReached();
-    error TGE_InvalidAddress();
-    error TGE_TransferEthFailed();
-    error TGE_AlreadyClaimed();
-    error TGE_InvalidValue();
-    error TGE_SaleHasNotEnded();
-    error TGE_AlreadyWithdraw();
-    error TGE_PoolHasNotSet();
-    error TGE_LiquidityBelowSlippage();
+    error InvalidSaleStart();
+    error InvalidSaleClose();
+    error SaleNotStarted();
+    error SaleHasStarted();
+    error SaleEnded();
+    error MaxDepositReached();
+    error InvalidAddress();
+    error TransferEthFailed();
+    error AlreadyClaimed();
+    error InvalidValue();
+    error SaleHasNotEnded();
+    error AlreadyWithdraw();
+    error PoolHasNotSet();
+    error LiquidityBelowSlippage();
 
     address public fxdx;
     uint128 public usdbcDeposited; // Keeps track of USDBC deposited
@@ -86,8 +82,8 @@ contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         OwnableUpgradeable.__Ownable_init();
         ReentrancyGuardUpgradeable.__ReentrancyGuard_init();
 
-        if (_saleStart <= block.timestamp) revert TGE_InvalidSaleStart();
-        if (_saleClose <= _saleStart) revert TGE_InvalidSaleClose();
+        if (_saleStart <= block.timestamp) revert InvalidSaleStart();
+        if (_saleClose <= _saleStart) revert InvalidSaleClose();
 
         fxdx = _fxdx;
         saleStart = _saleStart;
@@ -109,11 +105,11 @@ contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         address beneficiary,
         uint minOutUSD
     ) external payable nonReentrant {
-        if (msg.value == 0) revert TGE_InvalidValue();
+        if (msg.value == 0) revert InvalidValue();
         if (beneficiary == address(0) || beneficiary == address(this))
-            revert TGE_InvalidAddress();
-        if (block.timestamp < saleStart) revert TGE_SaleNotStarted();
-        if (block.timestamp > saleClose) revert TGE_SaleEnded();
+            revert InvalidAddress();
+        if (block.timestamp < saleStart) revert SaleNotStarted();
+        if (block.timestamp > saleClose) revert SaleEnded();
         // get usdbc from eth
         uint amountOut = swapETHtoUSDBC(minOutUSD);
         _deposit(beneficiary, amountOut);
@@ -121,10 +117,10 @@ contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
 
     function depositUsdbc(address beneficiary, uint256 _amount) external {
         if (beneficiary == address(0) || beneficiary == address(this))
-            revert TGE_InvalidAddress();
-        if (block.timestamp < saleStart) revert TGE_SaleNotStarted();
-        if (block.timestamp > saleClose) revert TGE_SaleEnded();
-        if (_amount == 0) revert TGE_InvalidValue();
+            revert InvalidAddress();
+        if (block.timestamp < saleStart) revert SaleNotStarted();
+        if (block.timestamp > saleClose) revert SaleEnded();
+        if (_amount == 0) revert InvalidValue();
 
         _deposit(beneficiary, _amount);
     }
@@ -163,15 +159,15 @@ contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
 
     /// @dev Withdraws eth deposited into the contract. Only owner can call this.
     function withdraw(address to) external onlyOwner {
-        if (block.timestamp <= saleClose) revert TGE_SaleHasNotEnded();
-        if (usdbcWithdrawn) revert TGE_AlreadyWithdraw();
+        if (block.timestamp <= saleClose) revert SaleHasNotEnded();
+        if (usdbcWithdrawn) revert AlreadyWithdraw();
         uint256 usdbctoWithdrawn = usdbcDeposited >= usdbcHardCap
             ? usdbcHardCap
             : usdbcDeposited;
         usdbcWithdrawn = true;
         _transferOutUsdbc(to, usdbctoWithdrawn);
 
-        emit LogWithdrawEth(usdbctoWithdrawn);
+        emit TokensWithdrawn(usdbctoWithdrawn);
     }
 
     function claimFXDX()
@@ -179,8 +175,8 @@ contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         // ClaimParams calldata _params
         nonReentrant
     {
-        if (block.timestamp <= saleClose) revert TGE_SaleHasNotEnded();
-        if (isClaimed[msg.sender]) revert TGE_AlreadyClaimed();
+        if (block.timestamp <= saleClose) revert SaleHasNotEnded();
+        if (isClaimed[msg.sender]) revert AlreadyClaimed();
         uint256 _claimableAmount = claimableAmount(msg.sender);
         uint256 _refundAmount = refundAmount(msg.sender);
         isClaimed[msg.sender] = true;
@@ -190,7 +186,7 @@ contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         if (_refundAmount > 0) {
             _transferOutUsdbc(msg.sender, _refundAmount);
         }
-        emit LogClaimFXDX(msg.sender, _claimableAmount, _refundAmount);
+        emit ClaimFXDX(msg.sender, _claimableAmount, _refundAmount);
     }
 
     function claimableAmount(
@@ -213,7 +209,7 @@ contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
     }
 
     function allocateFXDX(uint256 _fxdxAllocation) external onlyOwner {
-        if (block.timestamp > saleStart) revert TGE_SaleHasStarted();
+        if (block.timestamp > saleStart) revert SaleHasStarted();
         IERC20Upgradeable(fxdx).safeTransferFrom(
             msg.sender,
             address(this),
@@ -222,7 +218,7 @@ contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         fxdxTokensAllocated = IERC20Upgradeable(fxdx)
             .balanceOf(address(this))
             .toUint128();
-        emit LogAllocateFXDX(_fxdxAllocation);
+        emit AllocateFXDX(_fxdxAllocation);
     }
 
     function _transferOutUsdbc(address to, uint256 amount) internal {
