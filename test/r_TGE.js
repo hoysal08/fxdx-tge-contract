@@ -6,6 +6,10 @@ const { expect } = require("chai");
 const { time } = require("@nomicfoundation/hardhat-network-helpers");
 const { toBigInt } = require("ethers");
 
+const abii = require("../USDCBAse.json");
+
+const abi = abii.abi;
+
 const AddressZero = ethers.ZeroAddress;
 const START_DELAY = 3600;
 const START_TIMESTAMP = parseInt(Date.now() / 1000) + START_DELAY;
@@ -17,7 +21,6 @@ const LP_MINT_TOKENS = ethers.parseEther("1000");
 
 describe("TGE Contract", () => {
   async function deployFixture() {
-    
     const [owner, account1, account2] = await ethers.getSigners();
     const WETH = await ethers.getContractFactory("WETH", owner);
     const weth = await WETH.deploy();
@@ -39,7 +42,7 @@ describe("TGE Contract", () => {
         "0x2626664c2603336E57B271c5C0b26F421741e481"
       );
     await tge.waitForDeployment();
-   // await allocateFXDX(fxdx, owner, tge);
+    // await allocateFXDX(fxdx, owner, tge);
     //await time.increase(START_DELAY);
     return {
       owner,
@@ -72,16 +75,51 @@ describe("TGE Contract", () => {
       .connect(owner)
       .updateUniswapPool(500, "0x2626664c2603336E57B271c5C0b26F421741e481");
     const amountInWei = ethers.parseEther("1");
-    console.log(
-      await tgeWithSigner
-        .connect(beneficiary)
-        .depositETH(beneficiary, minOutUSD, {
-          value: amountInWei,
-          from: beneficiary,
-        })
-    );
 
-    console.log(await tge.usdbcDeposited());
+    await expect(
+      tgeWithSigner.connect(beneficiary).depositETH(beneficiary, minOutUSD, {
+        value: amountInWei,
+        from: beneficiary,
+      })
+    ).to.emit(tge, "TokenDeposit");
+  }
+
+  async function mintUSDC(beneficiary, amount) {
+    const bridge = "0x4200000000000000000000000000000000000010";
+    const addressTo = beneficiary;
+
+    const impersonatedSigner = await ethers.getImpersonatedSigner(bridge);
+    await network.provider.send("hardhat_setBalance", [
+      bridge,
+      "0x1000000000000000000000",
+    ]);
+    const signer = await ethers.getSigner(bridge);
+    const usdc = await ethers.getContractAt(
+      abi,
+      "0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA",
+      signer
+    );
+    await expect(
+      usdc.connect(impersonatedSigner).mint(addressTo, amount)
+    ).to.emit(usdc, "Mint");
+  }
+
+  async function depositUsdbc(beneficiary, amount, tge) {
+    const usdc = await ethers.getContractAt(
+      abi,
+      "0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA",
+      beneficiary
+    );
+    await usdc.connect(beneficiary).approve(tge.target, amount);
+    await mintUSDC(beneficiary, amount);
+    const timeInSeconds = 7300;
+    const timeHex = "0x" + timeInSeconds.toString(16);
+    await time.increase(timeHex);
+
+    await expect(
+      tge.connect(beneficiary).depositUsdbc(beneficiary, amount)
+    ).to.emit(tge, "TokenDeposit");
+    await expect(tge.connect(beneficiary).depositUsdbc(beneficiary, amount))
   }
 
   beforeEach(async () => {
@@ -96,5 +134,15 @@ describe("TGE Contract", () => {
   it("Should deposit ETH", async () => {
     const { owner, fxdx, tge, account1 } = this.fixture;
     await depositETH(account1, 0, fxdx, tge, owner);
+  });
+
+  it("Minting USDC", async () => {
+    const { owner, fxdx, tge, account1 } = this.fixture;
+    await mintUSDC(account1, 1000);
+  });
+
+  it("Should deposit direct USDC", async () => {
+    const { owner, fxdx, tge, account1 } = this.fixture;
+    await depositUsdbc(account1, 1000, tge);
   });
 });

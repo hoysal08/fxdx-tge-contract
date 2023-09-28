@@ -14,4 +14,6 @@ interface IWNative {
     function balanceOf(address wallet) external returns (uint256);
 
     function approve(address guy, uint wad) external returns (bool);
+
+    function allowance(address owner, address spender) external returns (uint256);
 }

@@ -11,7 +11,7 @@
 pragma solidity 0.8.18;
 
 import "hardhat/console.sol";
-import "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
+import "../../src/staking/interfaces/IUniswapV3Pool.sol";
 import "@uniswap/lib/contracts/libraries/TransferHelper.sol";
 import "../../lib/openzeppelin-contracts-upgradeable/contracts/access/OwnableUpgradeable.sol";
 import "../../lib/openzeppelin-contracts-upgradeable/contracts/token/ERC20/IERC20Upgradeable.sol";
@@ -124,7 +124,7 @@ contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
     if (block.timestamp < saleStart) revert TGE_SaleNotStarted();
     if (block.timestamp > saleClose) revert TGE_SaleEnded();
     if (_amount == 0) revert TGE_InvalidValue();
-
+    IERC20Upgradeable(usdbc).transferFrom(beneficiary, address(this), _amount);
     _deposit(beneficiary, _amount);
   }
 
@@ -132,25 +132,23 @@ contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
     uint256 minAmountOut
   ) internal returns (uint256 amountOut) {
     IWNative(weth).deposit{value: msg.value}();
-
-    IWNative(weth).approve(address(v3Router), msg.value); 
-    ISwapRouter.ExactInputSingleParams memory params = ISwapRouter
+    IWNative(weth).approve(v3Router, msg.value); 
+    IV3SwapRouter.ExactInputSingleParams memory params = IV3SwapRouter
       .ExactInputSingleParams({
         tokenIn: weth,
         tokenOut: usdbc,
         fee: poolFee,
         recipient: address(this),
-        deadline: block.timestamp,
         amountIn: msg.value,
         amountOutMinimum: minAmountOut,
         sqrtPriceLimitX96: 0
       });
-    console.log(poolFee);
-    amountOut = ISwapRouter(v3Router).exactInputSingle(params);
+    
+    amountOut = IV3SwapRouter(v3Router).exactInputSingle(params);
   }
 
   function _deposit(address beneficiary, uint256 _amount) internal {
-    IERC20Upgradeable(usdbc).transferFrom(beneficiary, address(this), _amount);
+
 
     deposits[beneficiary] = deposits[beneficiary] + _amount;
     usdbcDeposited = usdbcDeposited + _amount.toUint128();
