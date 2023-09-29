@@ -2,11 +2,13 @@
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^3.0.0",
     "@openzeppelin/hardhat-upgrades": "^2.2.1",
-    "hardhat": "^2.17.3"
+    "hardhat": "^2.17.4"
   },
   "dependencies": {
     "@nomicfoundation/hardhat-network-helpers": "^1.0.9",
     "@openzeppelin/contracts": "^4.9.3",
-    "ethers": "^6.7.1"
+    "@uniswap/lib": "^4.0.1-alpha",
+    "@uniswap/v3-periphery": "^1.4.3",
+    "ethers": "6.7.1"
   }
 }
