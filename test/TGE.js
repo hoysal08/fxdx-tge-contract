@@ -111,7 +111,7 @@ describe("TGE Contract", () => {
                 isPlaceBuyWall: false,
                 minLiquidity: 0
             }
-            await expect(tge.connect(account1).claimFXDX(params)).to.be.revertedWithCustomError(tge, 'TGE_SaleHasNotEnded()')
+            await expect(tge.connect(account1).claimFXDX(params)).to.be.revertedWithCustomError(tge, 'SaleHasNotEnded()')
         })
         it("users should be able to claim after the sale ends", async () => {
             const { owner, account1, account2, weth, fxdx, tge, START_TIMESTAMP, END_TIMESTAMP, ETH_HARDCAP_IN_WEI } = await loadFixture(deployFixture);
@@ -146,7 +146,7 @@ describe("TGE Contract", () => {
             const balanceAfter1stClaim = await fxdx.balanceOf(account1);
             expect(balanceAfter1stClaim).to.be.equal(claimAmount);
 
-            await expect(tge.connect(account1).claimFXDX(params)).to.be.revertedWithCustomError(tge, 'TGE_AlreadyClaimed()');
+            await expect(tge.connect(account1).claimFXDX(params)).to.be.revertedWithCustomError(tge, 'AlreadyClaimed()');
             const balanceAfter2stClaim = await fxdx.balanceOf(account1);
             expect(balanceAfter1stClaim).to.be.equal(balanceAfter2stClaim);
         })

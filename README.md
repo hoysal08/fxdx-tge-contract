@@ -22,4 +22,7 @@ Should we have a low cutoff(min cap for buy)
 
 
 
-Hardcap -> 1000ETH
+initialize aurgumnents
+
+->_poolfee is with price pressison 10,000 (0.05%->500)
+->_usdbcHardCap is with decimal of 6 (100usdbc -> 100 * 10**6)
