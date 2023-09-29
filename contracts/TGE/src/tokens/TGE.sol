@@ -59,10 +59,10 @@ contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
     mapping(address => uint256) public depositsInETH; // ETH each user deposited
     mapping(address => bool) public isClaimed; // Keep track if user has already claimed FXDX
 
-    uint price;
-    uint pricePrecision;
+    uint public price;
+    uint public pricePrecision;
     uint24 public poolFee;
-    uint8 dollorInCents;
+    uint8 public dollorInCents;
 
     /// @param _saleStart time when the token sale starts
     /// @param _saleClose time when the token sale closes
@@ -70,7 +70,7 @@ contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         uint64 _saleStart,
         uint64 _saleClose,
         uint192 _usdbcHardCap,
-        uint8 _poolFee,
+        uint24 _poolFee,
         address _fxdx,
         address _usdbc,
         address _weth,
@@ -83,16 +83,17 @@ contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         if (_saleStart <= block.timestamp) revert InvalidSaleStart();
         if (_saleClose <= _saleStart) revert InvalidSaleClose();
 
-        fxdx = _fxdx;
         saleStart = _saleStart;
         saleClose = _saleClose;
         usdbcHardCap = _usdbcHardCap;
+        poolFee = _poolFee;
+        fxdx = _fxdx;
         usdbc = _usdbc;
         weth = _weth;
         v3SwapRouter = _v3SwapRouter;
-        usdbcWithdrawn = false;
-        poolFee = _poolFee;
         ethDeposit = _ethDeposit;
+
+        usdbcWithdrawn = false;
         dollorInCents = 100;
         price = 12;
         pricePrecision = 10 ** 18;
@@ -115,9 +116,9 @@ contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         if (block.timestamp < saleStart) revert SaleNotStarted();
         if (block.timestamp > saleClose) revert SaleEnded();
 
-        depositsInETH[msg.sender] = msg.value;
         uint amountOut = swapETHtoUSDBC(minOutUSD);
         _deposit(beneficiary, amountOut);
+        depositsInETH[msg.sender] = msg.value;
     }
 
     function depositUsdbc(address beneficiary, uint256 _amount) external {
@@ -126,7 +127,7 @@ contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         if (block.timestamp < saleStart) revert SaleNotStarted();
         if (block.timestamp > saleClose) revert SaleEnded();
         if (_amount == 0) revert InvalidValue();
-        IERC20Upgradeable(usdbc).transferFrom(
+        IERC20Upgradeable(usdbc).safeTransferFrom(
             beneficiary,
             address(this),
             _amount
@@ -151,6 +152,7 @@ contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
             });
 
         amountOut = IV3SwapRouter(v3SwapRouter).exactInputSingle(params);
+        return amountOut;
     }
 
     function _deposit(address beneficiary, uint256 _amount) internal {
@@ -187,13 +189,6 @@ contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         emit ClaimFXDX(msg.sender, _claimableAmount, _refundAmount);
     }
 
-    // function claimableAmount(address beneficiary) public view returns (uint256) {
-    //   return
-    //     !isClaimed[beneficiary] && usdbcDeposited > 0
-    //       ? (deposits[beneficiary] * (dollorInCents / price)) / pricePrecision
-    //       : 0;
-    // }
-
     function claimableAmount(
         address beneficiary
     ) public view returns (uint256) {
@@ -204,18 +199,30 @@ contract TGE is OwnableUpgradeable, ReentrancyGuardUpgradeable {
                 : 0;
     }
 
+    // function refundAmount(address beneficiary) public view returns (uint256) {
+    //     if (isClaimed[beneficiary]) return 0;
+    //     if (usdbcDeposited <= usdbcHardCap) return 0;
+    //     return
+    //         deposits[beneficiary] -
+    //         (usdbcHardCap * deposits[beneficiary]) /
+    //         usdbcDeposited;
+    // }
+
     function refundAmount(address beneficiary) public view returns (uint256) {
         if (isClaimed[beneficiary]) return 0;
         if (usdbcDeposited <= usdbcHardCap) return 0;
         return
-            deposits[beneficiary] -
-            (usdbcHardCap * deposits[beneficiary]) /
+            (deposits[beneficiary] * (usdbcDeposited - usdbcHardCap)) /
             usdbcDeposited;
     }
 
     function allocateFXDX(uint256 _fxdxAllocation) external onlyOwner {
         if (block.timestamp > saleStart) revert SaleHasStarted();
-        IERC20Upgradeable(fxdx).safeTransfer(address(this), _fxdxAllocation);
+        IERC20Upgradeable(fxdx).safeTransferFrom(
+            owner(),
+            address(this),
+            _fxdxAllocation
+        );
         fxdxTokensAllocated = IERC20Upgradeable(fxdx)
             .balanceOf(address(this))
             .toUint128();
